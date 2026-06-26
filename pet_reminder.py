@@ -55,18 +55,20 @@ class AstartesPet(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedSize(self.W, self.H)
+        self._scale = 1.0
+        self.setFixedSize(int(self.W*self._scale), int(self.H*self._scale))
         self.setStyleSheet("background:transparent;")
 
         # 加载精灵帧 (缩放到合适大小)
         self._frames = {}
+        self._frames_raw = {}  # 原始图片
         target_h = 200  # 目标高度
         for state, fname in self.STATE_FRAMES.items():
             path = os.path.join(SPRITE_DIR, fname)
             if os.path.exists(path):
                 pix = QPixmap(path)
                 if not pix.isNull():
-                    # 按高度缩放，保持比例
+                    self._frames_raw[state] = pix
                     scaled = pix.scaledToHeight(target_h, Qt.SmoothTransformation)
                     self._frames[state] = scaled
 
@@ -103,6 +105,15 @@ class AstartesPet(QWidget):
         p.drawText(pm.rect(), Qt.AlignCenter, "ASTARTES\nFrame missing")
         p.end()
         return pm
+
+    def set_scale(self, s):
+        """缩放精灵"""
+        self._scale = s
+        th = int(200 * s)
+        for state, raw in self._frames_raw.items():
+            self._frames[state] = raw.scaledToHeight(th, Qt.SmoothTransformation)
+        self.setFixedSize(int(self.W*s), int(self.H*s))
+        self.update()
 
     def _tick(self):
         self._frame += 1
@@ -359,7 +370,12 @@ class PetReminderApp(QWidget):
 
     def _init_ui(self):
         self.setWindowFlags(Qt.FramelessWindowHint|Qt.WindowStaysOnTopHint)
-        self.setFixedSize(560,680); self.setWindowOpacity(0.93)
+        self._base_w, self._base_h = 560, 680
+        self._scale = 1.0
+        self.resize(self._base_w, self._base_h)
+        self.setMinimumSize(420, 520)
+        self.setMaximumSize(800, 980)
+        self.setWindowOpacity(0.93)
         self.setStyleSheet(f"background:{C['bg']};")
         lo=QVBoxLayout(self); lo.setContentsMargins(10,10,10,6); lo.setSpacing(4)
 
@@ -407,7 +423,7 @@ class PetReminderApp(QWidget):
         dtl.addWidget(self.tedit); dtl.addStretch(); lo.addLayout(dtl)
 
         # 任务列表
-        scroll=QScrollArea(); scroll.setWidgetResizable(True)
+        self._scroll=scroll=QScrollArea(); scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll.setMaximumHeight(140)
         scroll.setStyleSheet("QScrollArea{background:transparent;border:none;}QScrollBar:vertical{background:rgba(0,0,0,20);width:4px;border-radius:2px;}QScrollBar::handle:vertical{background:rgba(255,255,255,25);border-radius:2px;min-height:20px;}QScrollBar::handle:vertical:hover{background:rgba(255,255,255,50);}QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0;}")
@@ -418,7 +434,7 @@ class PetReminderApp(QWidget):
         scroll.setWidget(self.task_list); lo.addWidget(scroll)
 
         # ---- 宠物区域 ----
-        pet_frame=QFrame(); pet_frame.setFixedHeight(300)
+        self._pet_frame=pet_frame=QFrame(); pet_frame.setFixedHeight(300)
         pet_frame.setStyleSheet("background:transparent;border:none;")
         pfl=QHBoxLayout(pet_frame); pfl.setContentsMargins(0,0,0,0)
         pfl.addStretch(); self.pet=AstartesPet(); pfl.addWidget(self.pet); pfl.addStretch()
@@ -510,12 +526,58 @@ class PetReminderApp(QWidget):
         g=QLinearGradient(0,0,self.width(),0)
         g.setColorAt(0.0,QColor(130,160,255,0)); g.setColorAt(0.3,QColor(130,160,255,70))
         g.setColorAt(0.7,QColor(180,130,255,70)); g.setColorAt(1.0,QColor(180,130,255,0))
-        p.setPen(QPen(g,2)); p.drawLine(16,2,self.width()-16,2); p.end()
+        p.setPen(QPen(g,2)); p.drawLine(16,2,self.width()-16,2)
+        # 右下角缩放手柄
+        p.setPen(QPen(QColor(255,255,255,30),1.5))
+        for i in range(3):
+            x=self.width()-16+i*6; y=self.height()-4
+            p.drawLine(x,y,x+4,y-4)
+        p.end()
+    def _in_resize_zone(self, pos):
+        """右下角30x30为缩放热区"""
+        return pos.x() > self.width()-30 and pos.y() > self.height()-30
+
     def mousePressEvent(self,e):
-        if e.button()==Qt.LeftButton: self._drag_pos=e.globalPos()-self.frameGeometry().topLeft()
+        if e.button()==Qt.LeftButton:
+            if self._in_resize_zone(e.pos()):
+                self._resizing=True; self._resize_start=e.globalPos(); self._resize_geom=self.geometry()
+            else:
+                self._drag_pos=e.globalPos()-self.frameGeometry().topLeft()
     def mouseMoveEvent(self,e):
-        if e.buttons()==Qt.LeftButton and self._drag_pos: self.move(e.globalPos()-self._drag_pos)
-    def mouseReleaseEvent(self,e): self._drag_pos=None
+        if e.buttons()==Qt.LeftButton:
+            if hasattr(self,'_resizing') and self._resizing:
+                delta=e.globalPos()-self._resize_start
+                nw=max(self.minimumWidth(), self._resize_geom.width()+delta.x())
+                nh=max(self.minimumHeight(), self._resize_geom.height()+delta.y())
+                nw=min(self.maximumWidth(), nw); nh=min(self.maximumHeight(), nh)
+                self.resize(nw, nh)
+                self._update_scale()
+            elif self._drag_pos:
+                self.move(e.globalPos()-self._drag_pos)
+        else:
+            # 鼠标样式提示
+            if self._in_resize_zone(e.pos()):
+                self.setCursor(Qt.SizeFDiagCursor)
+            else:
+                self.setCursor(Qt.ArrowCursor)
+    def mouseReleaseEvent(self,e):
+        self._drag_pos=None; self._resizing=False
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self._update_scale()
+
+    def _update_scale(self):
+        self._scale = self.width() / self._base_w
+        if hasattr(self, 'pet'):
+            self.pet.set_scale(self._scale)
+            self._pet_frame.setFixedHeight(int(300*self._scale))
+        # 任务列表高度
+        if hasattr(self, '_scroll'):
+            self._scroll.setMaximumHeight(int(140*self._scale))
+        # 全局字体
+        f = QFont("Microsoft YaHei", max(7, int(10*self._scale)))
+        QApplication.instance().setFont(f)
 
     def _upd_date(self):
         today=date.today()
