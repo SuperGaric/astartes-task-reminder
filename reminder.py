@@ -380,6 +380,11 @@ class ReminderApp(QWidget):
         self._tray.setToolTip("Task Reminder")
         menu = QMenu()
         menu.addAction("Show", self._show_from_tray)
+        self._autostart_action = menu.addAction("Auto-start on boot")
+        self._autostart_action.setCheckable(True)
+        self._autostart_action.setChecked(self._is_autostart())
+        self._autostart_action.triggered.connect(self._toggle_autostart)
+        menu.addSeparator()
         menu.addAction("Quit", self._quit)
         self._tray.setContextMenu(menu)
         self._tray.activated.connect(self._on_tray_click)
@@ -418,6 +423,34 @@ class ReminderApp(QWidget):
     def _quit(self):
         self._tray.hide() if self._tray else None
         QApplication.quit()
+
+    def _startup_path(self):
+        import os as _os
+        return _os.path.join(_os.getenv("APPDATA",""),
+            r"Microsoft\Windows\Start Menu\Programs\Startup",
+            "TaskReminder.lnk")
+
+    def _is_autostart(self):
+        return os.path.exists(self._startup_path())
+
+    def _toggle_autostart(self, checked):
+        from win32com.client import Dispatch
+        startup = self._startup_path()
+        if checked:
+            try:
+                shell = Dispatch("WScript.Shell")
+                shortcut = shell.CreateShortcut(startup)
+                shortcut.TargetPath = "D:\\python\\pythonw.exe"
+                shortcut.Arguments = os.path.join(APP_DIR, "reminder.py")
+                shortcut.WorkingDirectory = APP_DIR
+                shortcut.Description = "Task Reminder"
+                shortcut.Save()
+            except:
+                self._autostart_action.setChecked(False)
+        else:
+            if os.path.exists(startup):
+                try: os.remove(startup)
+                except: pass
 
     # ========== 绘制 ==========
     def paintEvent(self, e):

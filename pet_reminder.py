@@ -447,7 +447,15 @@ class PetReminderApp(QWidget):
         p.drawRoundedRect(2,2,28,28,6,6)
         p.setPen(QPen(Qt.white,3)); p.drawLine(10,16,14,21); p.drawLine(14,21,23,12); p.end()
         self._tray.setIcon(QIcon(pm)); self._tray.setToolTip("Astartes Reminder")
-        menu=QMenu(); menu.addAction("Show",self._show_tray); menu.addAction("Quit",self._quit)
+        menu=QMenu()
+        menu.addAction("Show",self._show_tray)
+        # 开机自启开关
+        self._autostart_action = menu.addAction("Auto-start on boot")
+        self._autostart_action.setCheckable(True)
+        self._autostart_action.setChecked(self._is_autostart())
+        self._autostart_action.triggered.connect(self._toggle_autostart)
+        menu.addSeparator()
+        menu.addAction("Quit",self._quit)
         self._tray.setContextMenu(menu)
         self._tray.activated.connect(lambda r:self._show_tray() if r==QSystemTrayIcon.DoubleClick else None)
         self._tray.show()
@@ -456,6 +464,39 @@ class PetReminderApp(QWidget):
         else: self.close()
     def _show_tray(self): self.show(); self.raise_(); self.activateWindow()
     def _quit(self): self._tray.hide() if self._tray else None; QApplication.quit()
+
+    def _startup_path(self):
+        """获取开机启动快捷方式路径"""
+        import os as _os
+        startup = _os.path.join(_os.getenv("APPDATA",""),
+            r"Microsoft\Windows\Start Menu\Programs\Startup",
+            "AstartesReminder.lnk")
+        return startup
+
+    def _is_autostart(self):
+        return os.path.exists(self._startup_path())
+
+    def _toggle_autostart(self, checked):
+        """切换开机自启"""
+        import pythoncom
+        from win32com.client import Dispatch
+        startup = self._startup_path()
+        if checked:
+            # 创建快捷方式
+            try:
+                shell = Dispatch("WScript.Shell")
+                shortcut = shell.CreateShortcut(startup)
+                shortcut.TargetPath = "D:\\python\\pythonw.exe"
+                shortcut.Arguments = os.path.join(APP_DIR, "pet_reminder.py")
+                shortcut.WorkingDirectory = APP_DIR
+                shortcut.Description = "Astartes Task Reminder"
+                shortcut.Save()
+            except Exception as e:
+                self._autostart_action.setChecked(False)
+        else:
+            if os.path.exists(startup):
+                try: os.remove(startup)
+                except: pass
 
     def paintEvent(self,e):
         p=QPainter(self); p.setRenderHint(QPainter.Antialiasing)
