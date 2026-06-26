@@ -443,10 +443,16 @@ class PetReminderApp(QWidget):
         self._tray=QSystemTrayIcon(self)
         pm=QPixmap(32,32); pm.fill(Qt.transparent)
         p=QPainter(pm); p.setRenderHint(QPainter.Antialiasing)
-        p.setBrush(QBrush(QColor(130,160,255))); p.setPen(Qt.NoPen)
-        p.drawRoundedRect(2,2,28,28,6,6)
-        p.setPen(QPen(Qt.white,3)); p.drawLine(10,16,14,21); p.drawLine(14,21,23,12); p.end()
-        self._tray.setIcon(QIcon(pm)); self._tray.setToolTip("Astartes Reminder")
+        # 蓝色圆形底
+        p.setBrush(QBrush(QColor(41,82,163))); p.setPen(QPen(QColor(20,40,80),1.5))
+        p.drawEllipse(2,2,28,28)
+        # 白色 Ω 符号（战锤风格）
+        p.setPen(QPen(Qt.white,2.5))
+        p.drawArc(10, 12, 12, 12, 0*16, 180*16)  # 顶部弧
+        p.drawLine(10, 15, 10, 22)
+        p.drawLine(22, 15, 22, 22)
+        p.end()
+        self._tray.setIcon(QIcon(pm)); self._tray.setToolTip("Astartes Reminder - Right-click for menu")
         menu=QMenu()
         menu.addAction("Show",self._show_tray)
         # 开机自启开关
