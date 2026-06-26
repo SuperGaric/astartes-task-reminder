@@ -69,7 +69,7 @@ class AstartesPet(QWidget):
                 pix = QPixmap(path)
                 if not pix.isNull():
                     self._frames_raw[state] = pix
-                    scaled = pix.scaledToHeight(target_h, Qt.SmoothTransformation)
+                    scaled = pix.scaledToHeight(target_h, Qt.FastTransformation)
                     self._frames[state] = scaled
 
         # 如果没有加载到图片，用备用帧
@@ -111,7 +111,7 @@ class AstartesPet(QWidget):
         self._scale = s
         th = int(200 * s)
         for state, raw in self._frames_raw.items():
-            self._frames[state] = raw.scaledToHeight(th, Qt.SmoothTransformation)
+            self._frames[state] = raw.scaledToHeight(th, Qt.FastTransformation)
         self.setFixedSize(int(self.W*s), int(self.H*s))
         self.update()
 
@@ -449,6 +449,22 @@ class PetReminderApp(QWidget):
         self._cf_btn.setStyleSheet("QPushButton{background:rgba(130,160,255,50);color:#a0c0ff;border:1px solid rgba(130,160,255,80);border-radius:4px;padding:2px 6px;font-size:9px;}QPushButton:hover{background:rgba(130,160,255,120);color:#fff;}")
         self._cf_btn.hide(); fl.addWidget(self._cf_btn)
         fl.addStretch()
+        # 自启
+        from PyQt5.QtWidgets import QCheckBox
+        self._auto_cb = QCheckBox("Auto-start")
+        self._auto_cb.setChecked(self._is_autostart())
+        self._auto_cb.toggled.connect(self._toggle_autostart)
+        self._auto_cb.setStyleSheet(f"QCheckBox{{color:{C['text_muted']};font-size:9px;background:transparent;spacing:3px;}}QCheckBox::indicator{{width:12px;height:12px;}}")
+        fl.addWidget(self._auto_cb)
+        # 缩放按钮
+        sm = QPushButton("−"); sm.setFixedSize(18,18); sm.setCursor(Qt.PointingHandCursor)
+        sm.clicked.connect(lambda: self._zoom(-1))
+        sm.setStyleSheet("QPushButton{background:rgba(255,255,255,10);color:#999;border:1px solid rgba(255,255,255,15);border-radius:3px;font-size:10px;}QPushButton:hover{background:rgba(255,255,255,25);color:#ccc;}")
+        fl.addWidget(sm)
+        sp = QPushButton("+"); sp.setFixedSize(18,18); sp.setCursor(Qt.PointingHandCursor)
+        sp.clicked.connect(lambda: self._zoom(1))
+        sp.setStyleSheet("QPushButton{background:rgba(255,255,255,10);color:#999;border:1px solid rgba(255,255,255,15);border-radius:3px;font-size:10px;}QPushButton:hover{background:rgba(255,255,255,25);color:#ccc;}")
+        fl.addWidget(sp)
         clr=QPushButton("Clear done"); clr.setCursor(Qt.PointingHandCursor)
         clr.clicked.connect(self._clear_done)
         clr.setStyleSheet("QPushButton{background:transparent;color:rgba(180,180,200,130);border:1px solid rgba(255,255,255,12);border-radius:5px;padding:2px 7px;font-size:10px;}QPushButton:hover{background:rgba(255,100,100,30);color:#ff7878;border-color:rgba(255,100,100,80);}")
@@ -560,6 +576,19 @@ class PetReminderApp(QWidget):
                 self.setCursor(Qt.SizeFDiagCursor)
             else:
                 self.setCursor(Qt.ArrowCursor)
+    def wheelEvent(self, e):
+        """Ctrl+滚轮缩放窗口"""
+        if e.modifiers() & Qt.ControlModifier:
+            delta = 1 if e.angleDelta().y() > 0 else -1
+            nw = self.width() + delta * 30
+            nh = self.height() + delta * 36
+            nw = max(self.minimumWidth(), min(self.maximumWidth(), nw))
+            nh = max(self.minimumHeight(), min(self.maximumHeight(), nh))
+            self.resize(nw, nh)
+            self._update_scale()
+        else:
+            super().wheelEvent(e)
+
     def mouseReleaseEvent(self,e):
         self._drag_pos=None; self._resizing=False
 
@@ -643,6 +672,13 @@ class PetReminderApp(QWidget):
         self.st.setText("  |  ".join(parts))
         if hasattr(self,'_cf_btn'): self._cf_btn.setVisible(bool(self._filter_date))
     def _clear_filter(self): self._filter_date=None; self._refresh()
+    def _zoom(self, direction):
+        nw = self.width() + direction * 40
+        nh = self.height() + direction * 48
+        nw = max(self.minimumWidth(), min(self.maximumWidth(), nw))
+        nh = max(self.minimumHeight(), min(self.maximumHeight(), nh))
+        self.resize(nw, nh)
+        self._update_scale()
     def _od(self,task):
         if task.get("completed"): return False
         d=task.get("date","")
