@@ -25,8 +25,8 @@ DATA_FILE = os.path.join(APP_DIR, "tasks.json")
 C = {"bg":"#1e1e2e","text":"#e0e0f5","text_secondary":"#b4b4c8","text_muted":"#787890",
      "success":"#78dc8c","danger":"#ff7878"}
 
-FRAME_W, FRAME_H = 128, 208  # Codex pet frame size
-SCALE = 2  # x2 display size
+FRAME_W, FRAME_H = 128, 208
+SCALE = 1.3  # 显示缩放
 
 def load_tasks():
     if os.path.exists(DATA_FILE):
@@ -50,7 +50,8 @@ class TitusPet(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedSize(FRAME_W*SCALE, FRAME_H*SCALE)
+        self._scale = SCALE
+        self.setFixedSize(int(FRAME_W*self._scale), int(FRAME_H*self._scale))
         self.setStyleSheet("background:transparent;")
 
         self._sheet = QPixmap(SPRITESHEET)
@@ -151,7 +152,7 @@ class TitusPet(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.SmoothPixmapTransform)
         frame = self._get_frame()
-        scaled = frame.scaled(FRAME_W*SCALE, FRAME_H*SCALE, Qt.KeepAspectRatio, Qt.FastTransformation)
+        scaled = frame.scaled(int(FRAME_W*self._scale), int(FRAME_H*self._scale), Qt.KeepAspectRatio, Qt.FastTransformation)
         px = (self.width()-scaled.width())//2
         py = (self.height()-scaled.height())//2 + int(self._bob)
         p.drawPixmap(px, py, scaled)
@@ -206,7 +207,9 @@ class TitusPet(QWidget):
             ty += lh
 
     def set_scale(self, s):
-        pass  # Codex pet 固定比例
+        self._scale = s
+        self.setFixedSize(int(FRAME_W*s), int(FRAME_H*s))
+        self.update()
 
 
 # ==================== 弹窗 / 任务项 / 主窗口 ====================
@@ -302,7 +305,12 @@ class TitusApp(QWidget):
 
     def _init_ui(self):
         self.setWindowFlags(Qt.FramelessWindowHint|Qt.WindowStaysOnTopHint)
-        self.setFixedSize(460,680); self.setWindowOpacity(0.93)
+        self._base_w, self._base_h = 440, 650
+        self._scale = 1.0
+        self.resize(self._base_w, self._base_h)
+        self.setMinimumSize(360, 520)
+        self.setMaximumSize(700, 900)
+        self.setWindowOpacity(0.93)
         self.setStyleSheet(f"background:{C['bg']};")
         lo=QVBoxLayout(self); lo.setContentsMargins(10,10,10,6); lo.setSpacing(4)
         tl=QHBoxLayout(); tl.setContentsMargins(6,2,6,2)
@@ -342,7 +350,7 @@ class TitusApp(QWidget):
         self.task_layout=QVBoxLayout(self.task_list); self.task_layout.setContentsMargins(0,0,0,0); self.task_layout.setSpacing(2)
         self.task_layout.addStretch(); scroll.setWidget(self.task_list); lo.addWidget(scroll)
         # Titus 宠物
-        pf=QFrame(); pf.setFixedHeight(280); pf.setStyleSheet("background:transparent;border:none;")
+        self._pet_frame=pf=QFrame(); pf.setFixedHeight(int(FRAME_H*SCALE)+50); pf.setStyleSheet("background:transparent;border:none;")
         pfl=QHBoxLayout(pf); pfl.setContentsMargins(0,0,0,0); pfl.addStretch()
         self.pet=TitusPet(); pfl.addWidget(self.pet); pfl.addStretch(); lo.addWidget(pf)
         # 底部
@@ -351,6 +359,11 @@ class TitusApp(QWidget):
         auto=QCheckBox("Auto-start"); auto.setChecked(self._is_autostart()); auto.toggled.connect(self._toggle_autostart)
         auto.setStyleSheet(f"QCheckBox{{color:{C['text_muted']};font-size:9px;background:transparent;spacing:3px;}}"); fl.addWidget(auto)
         fl.addStretch()
+        for d,t in [(-1,"−"),(1,"+")]:
+            b=QPushButton(t); b.setFixedSize(18,18); b.setCursor(Qt.PointingHandCursor)
+            b.clicked.connect(lambda _,dd=d: self._zoom(dd))
+            b.setStyleSheet("QPushButton{background:rgba(255,255,255,10);color:#999;border:1px solid rgba(255,255,255,15);border-radius:3px;font-size:10px;}QPushButton:hover{background:rgba(255,255,255,25);color:#ccc;}")
+            fl.addWidget(b)
         clr=QPushButton("Clear done"); clr.setCursor(Qt.PointingHandCursor); clr.clicked.connect(self._clear_done)
         clr.setStyleSheet("QPushButton{background:transparent;color:rgba(180,180,200,130);border:1px solid rgba(255,255,255,12);border-radius:5px;padding:2px 7px;font-size:10px;}QPushButton:hover{background:rgba(255,100,100,30);color:#ff7878;}")
         fl.addWidget(clr); lo.addLayout(fl)
@@ -399,13 +412,47 @@ class TitusApp(QWidget):
         g=QLinearGradient(0,0,self.width(),0)
         g.setColorAt(0,QColor(130,160,255,0)); g.setColorAt(0.3,QColor(130,160,255,70))
         g.setColorAt(0.7,QColor(180,130,255,70)); g.setColorAt(1,QColor(180,130,255,0))
-        p.setPen(QPen(g,2)); p.drawLine(16,2,self.width()-16,2); p.end()
+        p.setPen(QPen(g,2)); p.drawLine(16,2,self.width()-16,2)
+        # 缩放手柄
+        p.setPen(QPen(QColor(255,255,255,25),1.5))
+        for i in range(3): x=self.width()-14+i*5; y=self.height()-3; p.drawLine(x,y,x+3,y-3)
+        p.end()
 
+    def _in_rz(self, pos): return pos.x()>self.width()-28 and pos.y()>self.height()-28
     def mousePressEvent(self,e):
-        if e.button()==Qt.LeftButton: self._drag_pos=e.globalPos()-self.frameGeometry().topLeft()
+        if e.button()==Qt.LeftButton:
+            if self._in_rz(e.pos()): self._rz=True; self._rz_s=e.globalPos(); self._rz_g=self.geometry()
+            else: self._drag_pos=e.globalPos()-self.frameGeometry().topLeft()
     def mouseMoveEvent(self,e):
-        if e.buttons()==Qt.LeftButton and self._drag_pos: self.move(e.globalPos()-self._drag_pos)
-    def mouseReleaseEvent(self,e): self._drag_pos=None
+        if e.buttons()==Qt.LeftButton:
+            if hasattr(self,'_rz') and self._rz:
+                d=e.globalPos()-self._rz_s
+                nw=max(self.minimumWidth(),min(self.maximumWidth(),self._rz_g.width()+d.x()))
+                nh=max(self.minimumHeight(),min(self.maximumHeight(),self._rz_g.height()+d.y()))
+                self.resize(nw,nh); self._update_scale()
+            elif self._drag_pos: self.move(e.globalPos()-self._drag_pos)
+        else:
+            self.setCursor(Qt.SizeFDiagCursor if self._in_rz(e.pos()) else Qt.ArrowCursor)
+    def mouseReleaseEvent(self,e): self._drag_pos=None; self._rz=False
+    def wheelEvent(self,e):
+        if e.modifiers()&Qt.ControlModifier:
+            d=1 if e.angleDelta().y()>0 else -1
+            self.resize(max(self.minimumWidth(),min(self.maximumWidth(),self.width()+d*30)),
+                        max(self.minimumHeight(),min(self.maximumHeight(),self.height()+d*36)))
+            self._update_scale()
+        else: super().wheelEvent(e)
+
+    def _update_scale(self):
+        s = self.width()/self._base_w
+        self.pet.set_scale(SCALE*s)
+        self._pet_frame.setFixedHeight(int(FRAME_H*SCALE*s)+50)
+        f = QFont("Microsoft YaHei", max(7,int(10*s)))
+        QApplication.instance().setFont(f)
+
+    def _zoom(self, d):
+        self.resize(max(self.minimumWidth(),min(self.maximumWidth(),self.width()+d*35)),
+                    max(self.minimumHeight(),min(self.maximumHeight(),self.height()+d*42)))
+        self._update_scale()
 
     def _upd_date(self):
         today=date.today(); wd=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][today.weekday()]
