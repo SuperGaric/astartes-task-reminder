@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+*.log
+error.log
+tasks.json
