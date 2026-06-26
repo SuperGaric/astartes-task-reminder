@@ -1,0 +1,7 @@
+{
+  "id": "titus",
+  "displayName": "Titus",
+  "description": "Warhammer 40K Space Marine character Titus.",
+  "spritesheetPath": "spritesheet.webp",
+  "kind": "person"
+}
