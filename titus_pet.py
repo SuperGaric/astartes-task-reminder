@@ -25,8 +25,10 @@ DATA_FILE = os.path.join(APP_DIR, "tasks.json")
 C = {"bg":"#1e1e2e","text":"#e0e0f5","text_secondary":"#b4b4c8","text_muted":"#787890",
      "success":"#78dc8c","danger":"#ff7878"}
 
-FRAME_W, FRAME_H = 128, 208
-SCALE = 1.3  # 显示缩放
+# 精灵表精确帧格（从实际分析得出）
+COLS = [(16,175),(208,367),(401,559),(598,745),(776,951),(971,1141),(1167,1325),(1366,1515)]
+ROWS = [(5,202),(213,410),(421,618),(629,826),(837,1034),(1045,1242),(1253,1450),(1461,1658),(1669,1866)]
+SCALE = 1.3
 
 def load_tasks():
     if os.path.exists(DATA_FILE):
@@ -44,14 +46,17 @@ def save_tasks(ts):
 
 # ==================== Titus Pet ====================
 class TitusPet(QWidget):
-    # 动画行映射 (基于分析: row0=idle, row2=run/alert, row5=jump/happy, row3=wave)
     ANIM_ROWS = {"idle": 0, "walk": 1, "alert": 2, "wave": 3, "happy": 5}
-    FRAMES_PER_ROW = 12
+    FRAMES_PER_ROW = len(COLS)  # 8
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._scale = SCALE
-        self.setFixedSize(int(FRAME_W*self._scale), int(FRAME_H*self._scale))
+        # 取第一帧的尺寸作为基准
+        fw = COLS[0][1] - COLS[0][0] + 1
+        fh = ROWS[0][1] - ROWS[0][0] + 1
+        self._fw, self._fh = fw, fh
+        self.setFixedSize(int(fw*self._scale), int(fh*self._scale))
         self.setStyleSheet("background:transparent;")
 
         self._sheet = QPixmap(SPRITESHEET)
@@ -86,11 +91,11 @@ class TitusPet(QWidget):
         return pm
 
     def _get_frame(self):
-        """从精灵表切取当前帧"""
         row = self.ANIM_ROWS.get(self._state, 0)
-        x = self._frame_idx * FRAME_W
-        y = row * FRAME_H
-        return self._sheet.copy(x, y, FRAME_W, FRAME_H)
+        col = self._frame_idx % self.FRAMES_PER_ROW
+        x1, x2 = COLS[col]
+        y1, y2 = ROWS[row]
+        return self._sheet.copy(x1, y1, x2-x1+1, y2-y1+1)
 
     def _tick(self):
         self._tick_count += 1
@@ -152,7 +157,7 @@ class TitusPet(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.SmoothPixmapTransform)
         frame = self._get_frame()
-        scaled = frame.scaled(int(FRAME_W*self._scale), int(FRAME_H*self._scale), Qt.KeepAspectRatio, Qt.FastTransformation)
+        scaled = frame.scaled(int(self._fw*self._scale), int(self._fh*self._scale), Qt.KeepAspectRatio, Qt.FastTransformation)
         px = (self.width()-scaled.width())//2
         py = (self.height()-scaled.height())//2 + int(self._bob)
         p.drawPixmap(px, py, scaled)
@@ -208,7 +213,7 @@ class TitusPet(QWidget):
 
     def set_scale(self, s):
         self._scale = s
-        self.setFixedSize(int(FRAME_W*s), int(FRAME_H*s))
+        self.setFixedSize(int(self._fw*s), int(self._fh*s))
         self.update()
 
 
@@ -350,7 +355,7 @@ class TitusApp(QWidget):
         self.task_layout=QVBoxLayout(self.task_list); self.task_layout.setContentsMargins(0,0,0,0); self.task_layout.setSpacing(2)
         self.task_layout.addStretch(); scroll.setWidget(self.task_list); lo.addWidget(scroll)
         # Titus 宠物
-        self._pet_frame=pf=QFrame(); pf.setFixedHeight(int(FRAME_H*SCALE)+50); pf.setStyleSheet("background:transparent;border:none;")
+        self._pet_frame=pf=QFrame(); pf.setFixedHeight(int(ROWS[0][1]-ROWS[0][0]+1)*SCALE+50); pf.setStyleSheet("background:transparent;border:none;")
         pfl=QHBoxLayout(pf); pfl.setContentsMargins(0,0,0,0); pfl.addStretch()
         self.pet=TitusPet(); pfl.addWidget(self.pet); pfl.addStretch(); lo.addWidget(pf)
         # 底部
@@ -445,7 +450,7 @@ class TitusApp(QWidget):
     def _update_scale(self):
         s = self.width()/self._base_w
         self.pet.set_scale(SCALE*s)
-        self._pet_frame.setFixedHeight(int(FRAME_H*SCALE*s)+50)
+        self._pet_frame.setFixedHeight(int(self.pet._fh*SCALE*s)+50)
         f = QFont("Microsoft YaHei", max(7,int(10*s)))
         QApplication.instance().setFont(f)
 
